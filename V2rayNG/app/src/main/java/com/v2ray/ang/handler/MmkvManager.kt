@@ -491,6 +491,38 @@ object MmkvManager {
     }
 
     /**
+     * Encodes the server throughput test result.
+     *
+     * @param guid The server GUID.
+     * @param downloadBytesPerSecond Download speed, or a negative value on failure.
+     * @param uploadBytesPerSecond Upload speed, or a negative value on failure.
+     */
+    fun encodeServerTestSpeed(guid: String, downloadBytesPerSecond: Long, uploadBytesPerSecond: Long) {
+        if (guid.isBlank()) {
+            return
+        }
+        val aff = decodeServerAffiliationInfo(guid) ?: ServerAffiliationInfo()
+        aff.testDownloadBytesPerSecond = downloadBytesPerSecond
+        aff.testUploadBytesPerSecond = uploadBytesPerSecond
+        serverAffStorage.encode(guid, JsonUtil.toJson(aff))
+    }
+
+    /**
+     * Clears the throughput test results of the given servers.
+     *
+     * @param keys The list of server GUIDs.
+     */
+    fun clearAllTestSpeedResults(keys: List<String>?) {
+        keys?.forEach { key ->
+            decodeServerAffiliationInfo(key)?.let { aff ->
+                aff.testDownloadBytesPerSecond = 0
+                aff.testUploadBytesPerSecond = 0
+                serverAffStorage.encode(key, JsonUtil.toJson(aff))
+            }
+        }
+    }
+
+    /**
      * Clears all test delay results.
      *
      * @param keys The list of server GUIDs.

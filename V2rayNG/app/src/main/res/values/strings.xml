@@ -357,6 +357,14 @@
     <string name="title_sub_update">Update subscription</string>
     <string name="title_ping_all_server">Test TCP delays (TCPing)</string>
     <string name="title_real_ping_all_server">Test real delays</string>
+    <string name="title_speed_test_selected_server">Test real speed of selected configuration (download/upload)</string>
+    <string name="title_speed_test_all_server">Test real speeds (download/upload)</string>
+    <string name="title_speed_test_running">Real speed test</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Mbps</string>
+    <string name="acc_server_test_speed">Download %1$s Mbps, upload %2$s Mbps</string>
+    <string name="server_test_speed_failed">Speed test failed</string>
+    <string name="server_test_speed_mbps" translatable="false">%1$.1f</string>
+    <string name="server_test_speed_none" translatable="false">–</string>
     <string name="title_user_asset_setting">Asset files</string>
     <string name="title_sort_by_test_results">Sort by test results</string>
     <string name="title_filter_config">Filter configs</string>

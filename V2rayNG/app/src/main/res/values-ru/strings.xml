@@ -357,6 +357,12 @@
     <string name="title_sub_update">Обновить подписку</string>
     <string name="title_ping_all_server">Проверить TCP-задержку</string>
     <string name="title_real_ping_all_server">Проверить реальную задержку</string>
+    <string name="title_speed_test_selected_server">Проверить реальную скорость выбранного профиля (загрузка/отдача)</string>
+    <string name="title_speed_test_all_server">Проверить реальную скорость (загрузка/отдача)</string>
+    <string name="title_speed_test_running">Проверка реальной скорости</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Мбит/с</string>
+    <string name="acc_server_test_speed">Загрузка %1$s Мбит/с, отдача %2$s Мбит/с</string>
+    <string name="server_test_speed_failed">Ошибка проверки скорости</string>
     <string name="title_user_asset_setting">Файлы ресурсов</string>
     <string name="title_sort_by_test_results">Сортировать по результатам теста</string>
     <string name="title_filter_config">Фильтр профилей</string>

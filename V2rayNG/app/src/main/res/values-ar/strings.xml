@@ -357,6 +357,12 @@
     <string name="title_sub_update">تحديث الاشتراك</string>
     <string name="title_ping_all_server">اختبار تأخير TCP (TCPing)</string>
     <string name="title_real_ping_all_server">اختبار زمن الاستجابة الفعلي</string>
+    <string name="title_speed_test_selected_server">اختبار السرعة الفعلية للتكوين المحدد (تنزيل/رفع)</string>
+    <string name="title_speed_test_all_server">اختبار السرعة الفعلية (تنزيل/رفع)</string>
+    <string name="title_speed_test_running">اختبار السرعة الفعلية</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Mbps</string>
+    <string name="acc_server_test_speed">تنزيل %1$s ميغابت/ث، رفع %2$s ميغابت/ث</string>
+    <string name="server_test_speed_failed">فشل اختبار السرعة</string>
     <string name="title_user_asset_setting">ملفات الأصول</string>
     <string name="title_sort_by_test_results">الفرز حسب نتائج الاختبار</string>
     <string name="title_filter_config">تصفية ملف التكوين</string>

@@ -357,6 +357,12 @@
     <string name="title_sub_update">Abunəliyi yenilə</string>
     <string name="title_ping_all_server">TCP gecikmələrini sınaqdan keçir (TCPing)</string>
     <string name="title_real_ping_all_server">Real gecikmələri sınaqdan keçir</string>
+    <string name="title_speed_test_selected_server">Seçilmiş konfiqurasiyanın real sürətini sınaqdan keçir (endirmə/yükləmə)</string>
+    <string name="title_speed_test_all_server">Real sürətləri sınaqdan keçir (endirmə/yükləmə)</string>
+    <string name="title_speed_test_running">Real sürət sınağı</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Mbps</string>
+    <string name="acc_server_test_speed">Endirmə %1$s Mbps, yükləmə %2$s Mbps</string>
+    <string name="server_test_speed_failed">Sürət sınağı uğursuz oldu</string>
     <string name="title_user_asset_setting">Resurs faylları</string>
     <string name="title_sort_by_test_results">Sınaq nəticələrinə görə çeşidlə</string>
     <string name="title_filter_config">Konfiqurasiyaları filtrdən keçir</string>

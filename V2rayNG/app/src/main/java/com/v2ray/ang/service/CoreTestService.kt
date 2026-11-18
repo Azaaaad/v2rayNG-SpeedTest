@@ -11,6 +11,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.core.CoreNativeManager
 import com.v2ray.ang.dto.RealPingEvent
 import com.v2ray.ang.dto.RealPingResult
+import com.v2ray.ang.dto.SpeedTestEvent
 import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.enums.NotificationChannelType
 import com.v2ray.ang.extension.serializable
@@ -29,7 +30,7 @@ class CoreTestService : Service() {
     }
 
     // manage active batch workers so each batch is independent and cancellable
-    private val activeWorkers = ConcurrentHashMap<RealPingWorkerService, String>()
+    private val activeWorkers = ConcurrentHashMap<TestBatchWorker, String>()
     private val cancelAction by lazy {
         val intent = Intent(this, CoreTestService::class.java).putExtra(
             "content",
@@ -118,23 +119,80 @@ class CoreTestService : Service() {
         }
 
         if (guidsList.isNotEmpty()) {
-            lateinit var worker: RealPingWorkerService
-            worker = RealPingWorkerService(
-                context = this,
-                guids = guidsList,
-                onlyTcp = message.onlyTcp,
-                onEvent = { event ->
-                    if (activeWorkers.containsKey(worker)) {
-                        handleWorkerEvent(event, message, requestId) { activeWorkers.remove(worker) }
-                    }
-                }
-            )
+            val worker = if (message.speedTest) {
+                createSpeedTestWorker(guidsList, requestId)
+            } else {
+                createRealPingWorker(guidsList, message, requestId)
+            }
             activeWorkers[worker] = requestId
             worker.start()
         } else {
             MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_CANCEL, "", requestId)
             NotificationHelper.stopForeground(this)
             stopSelf(startId)
+        }
+    }
+
+    private fun createRealPingWorker(guids: List<String>, message: TestServiceMessage, requestId: String): TestBatchWorker {
+        lateinit var worker: RealPingWorkerService
+        worker = RealPingWorkerService(
+            context = this,
+            guids = guids,
+            onlyTcp = message.onlyTcp,
+            onEvent = { event ->
+                if (activeWorkers.containsKey(worker)) {
+                    handleWorkerEvent(event, message, requestId) { activeWorkers.remove(worker) }
+                }
+            }
+        )
+        return worker
+    }
+
+    private fun createSpeedTestWorker(guids: List<String>, requestId: String): TestBatchWorker {
+        lateinit var worker: SpeedTestWorkerService
+        worker = SpeedTestWorkerService(
+            context = this,
+            guids = guids,
+            onEvent = { event ->
+                if (activeWorkers.containsKey(worker)) {
+                    handleSpeedTestEvent(event, requestId) { activeWorkers.remove(worker) }
+                }
+            }
+        )
+        return worker
+    }
+
+    private fun handleSpeedTestEvent(event: SpeedTestEvent, requestId: String, onWorkerDone: () -> Unit) {
+        when (event) {
+            is SpeedTestEvent.Progress -> {
+                NotificationHelper.updateNotification(
+                    channelType = NotificationChannelType.CORE_TEST,
+                    context = this,
+                    title = getString(R.string.title_speed_test_running),
+                    content = getString(R.string.connection_running_task_left, event.text)
+                )
+                MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_NOTIFY, event.text, requestId)
+            }
+
+            is SpeedTestEvent.Result -> {
+                val result = event.result
+                MmkvManager.encodeServerTestSpeed(
+                    result.guid,
+                    result.downloadBytesPerSecond,
+                    result.uploadBytesPerSecond
+                )
+                MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_SPEED_SUCCESS, result, requestId)
+            }
+
+            // Delay-based auto-remove and auto-sort settings do not apply to throughput results.
+            SpeedTestEvent.Finish -> {
+                MessageHelper.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, "0", requestId)
+                onWorkerDone()
+                if (activeWorkers.isEmpty()) {
+                    NotificationHelper.stopForeground(this)
+                    stopSelf()
+                }
+            }
         }
     }
 

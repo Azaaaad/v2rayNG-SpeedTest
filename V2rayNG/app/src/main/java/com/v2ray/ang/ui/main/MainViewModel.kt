@@ -10,6 +10,7 @@ import com.v2ray.ang.dto.ConnectionTestResult
 import com.v2ray.ang.dto.GroupMapItem
 import com.v2ray.ang.dto.LocateTarget
 import com.v2ray.ang.dto.RealPingResult
+import com.v2ray.ang.dto.SpeedTestResult
 import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.ServersCache
@@ -106,6 +107,7 @@ class MainViewModel(
     private var reloadJob: Job? = null
     private var testResultFlushJob: Job? = null
     private val pendingTestResults = linkedMapOf<String, Long>()
+    private val pendingSpeedResults = linkedMapOf<String, SpeedTestResult>()
 
     private val testRequests = MainTestRequests()
     private var bulkTestJob: Job? = null
@@ -155,6 +157,12 @@ class MainViewModel(
                 queueTestResult(event.result, request)
             }
 
+            is MainServiceEvent.MeasureSpeedSuccess -> {
+                val request = testRequests.bulk?.takeIf { it.id == event.requestId } ?: return
+                pendingSpeedResults[event.result.guid] = event.result
+                scheduleTestResultFlush(request)
+            }
+
             is MainServiceEvent.MeasureConfigNotify -> {
                 if (event.requestId == testRequests.bulk?.id) {
                     _uiState.update { it.copy(status = MainStatus.TestProgress(event.progress)) }
@@ -187,10 +195,14 @@ class MainViewModel(
 
     private fun queueTestResult(result: RealPingResult, request: MainTestRequests.Bulk) {
         pendingTestResults[result.guid] = result.delayMillis
+        scheduleTestResultFlush(request)
+    }
+
+    private fun scheduleTestResultFlush(request: MainTestRequests.Bulk) {
         if (testResultFlushJob?.isActive == true) return
 
         testResultFlushJob = viewModelScope.launch {
-            while (pendingTestResults.isNotEmpty()) {
+            while (pendingTestResults.isNotEmpty() || pendingSpeedResults.isNotEmpty()) {
                 delay(TEST_RESULT_FLUSH_INTERVAL_MS)
                 flushPendingTestResults(request)
             }
@@ -198,23 +210,26 @@ class MainViewModel(
     }
 
     private suspend fun flushPendingTestResults(request: MainTestRequests.Bulk) {
-        if (pendingTestResults.isEmpty()) return
+        if (pendingTestResults.isEmpty() && pendingSpeedResults.isEmpty()) return
         if (testRequests.bulk?.id != request.id) return
 
-        val updates = cacheMutex.withLock {
-            val drained = pendingTestResults.toMap()
+        val (delayUpdates, speedUpdates) = cacheMutex.withLock {
+            val drainedDelays = pendingTestResults.toMap()
+            val drainedSpeeds = pendingSpeedResults.toMap()
             pendingTestResults.clear()
+            pendingSpeedResults.clear()
             groupDataCache[request.groupId]?.let { cached ->
-                groupDataCache[request.groupId] = applyTestDelayResults(cached, drained)
+                groupDataCache[request.groupId] =
+                    applySpeedTestResults(applyTestDelayResults(cached, drainedDelays), drainedSpeeds)
             }
-            drained
+            drainedDelays to drainedSpeeds
         }
-        if (updates.isEmpty()) return
+        if (delayUpdates.isEmpty() && speedUpdates.isEmpty()) return
         if (testRequests.bulk?.id != request.id) return
         mutableServerGroupState(request.groupId).update { current ->
             current.copy(
-                servers = applyTestDelayResults(current.servers, updates),
-                rows = applyTestDelayResultsToRows(current.rows, updates),
+                servers = applySpeedTestResults(applyTestDelayResults(current.servers, delayUpdates), speedUpdates),
+                rows = applySpeedTestResultsToRows(applyTestDelayResultsToRows(current.rows, delayUpdates), speedUpdates),
             )
         }
     }
@@ -279,6 +294,8 @@ class MainViewModel(
             MainAction.RefreshGroups -> setupGroupTab(forceRefresh = true)
             MainAction.TestAllServers -> testAllRealPing(true)
             MainAction.TestRealAllServers -> testAllRealPing()
+            MainAction.SpeedTestSelectedServer -> testSpeed(selectedOnly = true)
+            MainAction.SpeedTestAllServers -> testSpeed(selectedOnly = false)
             MainAction.CancelTesting -> cancelAllPing()
             MainAction.RemoveAllServers -> removeAllServerAsync()
             MainAction.RemoveDuplicateServers -> removeDuplicateServerAsync()
@@ -353,7 +370,9 @@ class MainViewModel(
             ServersCache(
                 guid = guid,
                 profile = profile.copy(),
-                testDelayMillis = affiliation?.testDelayMillis ?: 0L
+                testDelayMillis = affiliation?.testDelayMillis ?: 0L,
+                testDownloadBytesPerSecond = affiliation?.testDownloadBytesPerSecond ?: 0L,
+                testUploadBytesPerSecond = affiliation?.testUploadBytesPerSecond ?: 0L,
             )
         }
 
@@ -889,6 +908,60 @@ class MainViewModel(
         testResultFlushJob?.cancel()
         testResultFlushJob = null
         pendingTestResults.clear()
+        pendingSpeedResults.clear()
+    }
+
+    /**
+     * Measure real download and upload throughput in the test process, one server at a time.
+     *
+     * @param selectedOnly Test only the selected server; otherwise every server visible in
+     * the selected group, honoring the keyword filter.
+     */
+    fun testSpeed(selectedOnly: Boolean) {
+        val groupId = uiState.value.selectedGroupId
+        val serverGuids = speedTestTargets(
+            selectedOnly = selectedOnly,
+            selectedGuid = uiState.value.selectedGuid,
+            visibleGuids = currentServers().map { it.guid },
+        )
+        if (serverGuids.isEmpty()) {
+            toastError(R.string.toast_none_data)
+            return
+        }
+        cancelAllPing()
+        val resetGuids = serverGuids.toHashSet()
+        mutableServerGroupState(groupId).update { current ->
+            current.copy(
+                servers = clearSpeedTestResults(current.servers, resetGuids),
+                rows = clearSpeedTestResultsInRows(current.rows, resetGuids),
+            )
+        }
+        val request = testRequests.beginBulk(groupId)
+        // An unfiltered whole-group test lets the service read the group itself, keeping the intent small.
+        val sendGuids = selectedOnly || keywordFilter.isNotEmpty()
+        val message = TestServiceMessage(
+            key = AppConfig.MSG_MEASURE_CONFIG_START,
+            subscriptionId = groupId,
+            serverGuids = if (sendGuids) serverGuids else emptyList(),
+            speedTest = true
+        )
+        _uiState.update {
+            it.copy(
+                isTesting = true,
+                status = MainStatus.Testing
+            )
+        }
+        bulkTestJob = viewModelScope.launch {
+            withContext(ioDispatcher) {
+                dataSource.clearAllTestSpeedResults(serverGuids)
+                cacheMutex.withLock {
+                    groupDataCache[groupId]?.let { cached ->
+                        groupDataCache[groupId] = clearSpeedTestResults(cached, resetGuids)
+                    }
+                }
+            }
+            dataSource.sendMsg2TestService(message, request.id)
+        }
     }
 
     fun testCurrentServerRealPing() {

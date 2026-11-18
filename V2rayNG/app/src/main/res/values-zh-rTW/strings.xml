@@ -357,6 +357,12 @@
     <string name="title_sub_update">更新訂閱</string>
     <string name="title_ping_all_server">測試 TCP 延遲（TCPing）</string>
     <string name="title_real_ping_all_server">測試真連接延遲</string>
+    <string name="title_speed_test_selected_server">測試所選設定檔真實速度（下載/上傳）</string>
+    <string name="title_speed_test_all_server">測試真實速度（下載/上傳）</string>
+    <string name="title_speed_test_running">真實速度測試</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Mbps</string>
+    <string name="acc_server_test_speed">下載 %1$s Mbps，上傳 %2$s Mbps</string>
+    <string name="server_test_speed_failed">測速失敗</string>
     <string name="title_user_asset_setting">資源檔案</string>
     <string name="title_sort_by_test_results">依測試結果排序</string>
     <string name="title_filter_config">篩選設定</string>

@@ -35,3 +35,17 @@ internal class MainTestRequests {
         bulk = null
     }
 }
+
+/**
+ * Servers a speed test covers: the selected server, or every visible server of the group.
+ * Returns an empty list when there is nothing to test.
+ */
+internal fun speedTestTargets(
+    selectedOnly: Boolean,
+    selectedGuid: String?,
+    visibleGuids: List<String>,
+): List<String> = if (selectedOnly) {
+    listOfNotNull(selectedGuid?.takeIf { it.isNotBlank() })
+} else {
+    visibleGuids
+}

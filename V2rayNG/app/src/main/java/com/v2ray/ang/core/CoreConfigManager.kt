@@ -4,6 +4,8 @@ import android.content.Context
 import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParseException
+import com.google.gson.JsonParser
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ConfigResult
 import com.v2ray.ang.dto.CoreConfigContext
@@ -83,6 +85,58 @@ object CoreConfigManager {
             )
         }
     }
+
+    /**
+     * Build a throughput-test configuration: the latency-test configuration with one
+     * loopback HTTP inbound, so the test process can transfer real data through the profile.
+     */
+    fun getV2rayConfig4ThroughputTest(context: Context, guid: String, httpPort: Int): ConfigResult {
+        val result = getV2rayConfig4Speedtest(context, guid)
+        if (!result.status) {
+            return result
+        }
+        val content = withLoopbackHttpInbound(result.content, httpPort)
+            ?: return ConfigResult(
+                status = false,
+                guid = guid,
+                errorMessage = "Failed to add the throughput test inbound"
+            )
+        return ConfigResult(status = true, guid = guid, content = content)
+    }
+
+    /**
+     * Replace every inbound with a single unauthenticated HTTP proxy bound to loopback.
+     *
+     * Custom profiles may contain TUN or LAN inbounds; replacing them keeps the test
+     * instance from opening anything other than the loopback listener.
+     *
+     * @return The new configuration JSON, or null when [content] is not a JSON object or
+     * [httpPort] is not a valid port.
+     */
+    internal fun withLoopbackHttpInbound(content: String, httpPort: Int): String? {
+        if (httpPort !in 1..65535) {
+            return null
+        }
+        val root = try {
+            JsonParser.parseString(content)
+        } catch (_: JsonParseException) {
+            return null
+        }
+        if (!root.isJsonObject) {
+            return null
+        }
+        val inbound = JsonObject().apply {
+            addProperty("tag", THROUGHPUT_TEST_INBOUND_TAG)
+            addProperty("listen", AppConfig.LOOPBACK)
+            addProperty("port", httpPort)
+            addProperty("protocol", "http")
+            add("settings", JsonObject())
+        }
+        root.asJsonObject.add("inbounds", JsonArray().apply { add(inbound) })
+        return root.toString()
+    }
+
+    internal const val THROUGHPUT_TEST_INBOUND_TAG = "throughput-test-in"
 
     /**
      * Build configuration for custom profiles.

@@ -357,6 +357,12 @@
     <string name="title_sub_update">ورۊ کردن اشتراک بونکۊ سکویی</string>
     <string name="title_ping_all_server">آزمایش تئخیر TCP (TCPing)</string>
     <string name="title_real_ping_all_server">آزمایش تئخیر واقعی</string>
+    <string name="title_speed_test_selected_server">آزمایش سرعت واقعی کانفیگ پسند وابیڌه (دانلود/آپلود)</string>
+    <string name="title_speed_test_all_server">آزمایش سرعت واقعی (دانلود/آپلود)</string>
+    <string name="title_speed_test_running">آزمایش سرعت واقعی</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Mbps</string>
+    <string name="acc_server_test_speed">دانلود %1$s Mbps، آپلود %2$s Mbps</string>
+    <string name="server_test_speed_failed">آزمایش سرعت شکست خرد</string>
     <string name="title_user_asset_setting">فایلا بونچک جوقرافیایی</string>
     <string name="title_sort_by_test_results">ترتیب و ری نتیجه یل پینگ</string>
     <string name="title_filter_config">فیلتر کردن کانفیگا</string>

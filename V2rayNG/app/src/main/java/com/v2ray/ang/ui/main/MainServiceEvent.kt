@@ -2,6 +2,7 @@ package com.v2ray.ang.ui.main
 
 import com.v2ray.ang.dto.ConnectionTestResult
 import com.v2ray.ang.dto.RealPingResult
+import com.v2ray.ang.dto.SpeedTestResult
 
 sealed class MainServiceEvent {
     data object StateRunning : MainServiceEvent()
@@ -12,6 +13,7 @@ sealed class MainServiceEvent {
     data class MeasureDelayResult(val result: ConnectionTestResult, val requestId: String) : MainServiceEvent()
     data class MeasureDelayCancelled(val requestId: String) : MainServiceEvent()
     data class MeasureConfigSuccess(val result: RealPingResult, val requestId: String) : MainServiceEvent()
+    data class MeasureSpeedSuccess(val result: SpeedTestResult, val requestId: String) : MainServiceEvent()
     data class MeasureConfigNotify(val progress: String, val requestId: String) : MainServiceEvent()
     data class MeasureConfigFinish(val requestId: String) : MainServiceEvent()
     data class MeasureConfigCancelled(val requestId: String) : MainServiceEvent()

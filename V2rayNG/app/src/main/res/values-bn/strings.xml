@@ -357,6 +357,12 @@
     <string name="title_sub_update">সাবস্ক্রিপশন আপডেট</string>
     <string name="title_ping_all_server">TCP বিলম্ব পরীক্ষা করুন (TCPing)</string>
     <string name="title_real_ping_all_server">প্রকৃত বিলম্ব পরীক্ষা করুন</string>
+    <string name="title_speed_test_selected_server">নির্বাচিত কনফিগের প্রকৃত গতি পরীক্ষা করুন (ডাউনলোড/আপলোড)</string>
+    <string name="title_speed_test_all_server">প্রকৃত গতি পরীক্ষা করুন (ডাউনলোড/আপলোড)</string>
+    <string name="title_speed_test_running">প্রকৃত গতি পরীক্ষা</string>
+    <string name="server_test_speed_value">↓ %1$s ↑ %2$s Mbps</string>
+    <string name="acc_server_test_speed">ডাউনলোড %1$s Mbps, আপলোড %2$s Mbps</string>
+    <string name="server_test_speed_failed">গতি পরীক্ষা ব্যর্থ</string>
     <string name="title_user_asset_setting">অ্যাসেট ফাইল</string>
     <string name="title_sort_by_test_results">টেস্ট ফলাফল দ্বারা সাজানো</string>
     <string name="title_filter_config">কনফিগারেশন ফাইল ফিল্টার করুন</string>

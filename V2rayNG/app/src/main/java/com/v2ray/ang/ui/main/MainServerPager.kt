@@ -45,10 +45,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -467,9 +469,51 @@ private fun ServerListItem(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            ServerSpeedResult(row)
         }
     }
 }
+
+/** Download/upload throughput line; absent until the server has been speed-tested. */
+@Composable
+private fun ServerSpeedResult(row: ServerRowUiModel) {
+    val download = row.testDownloadBytesPerSecond
+    val upload = row.testUploadBytesPerSecond
+    if (download == 0L && upload == 0L) return
+
+    val failed = download < 0L && upload < 0L
+    val text: String
+    val spokenText: String
+    if (failed) {
+        text = stringResource(R.string.server_test_speed_failed)
+        spokenText = text
+    } else {
+        val downloadText = formatSpeedMbps(download)
+        val uploadText = formatSpeedMbps(upload)
+        text = stringResource(R.string.server_test_speed_value, downloadText, uploadText)
+        spokenText = stringResource(R.string.acc_server_test_speed, downloadText, uploadText)
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = spokenText },
+        style = MaterialTheme.typography.bodySmall,
+        color = if (failed) colorPingRed else colorPing,
+        textAlign = TextAlign.End,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+private fun formatSpeedMbps(bytesPerSecond: Long): String =
+    if (bytesPerSecond > 0L) {
+        stringResource(R.string.server_test_speed_mbps, bytesPerSecondToMbps(bytesPerSecond))
+    } else {
+        stringResource(R.string.server_test_speed_none)
+    }
 
 internal suspend fun PagerState.navigateToPageOptimized(
     targetPage: Int,

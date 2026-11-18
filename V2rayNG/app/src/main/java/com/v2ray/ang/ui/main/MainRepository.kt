@@ -10,6 +10,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.ConnectionTestResult
 import com.v2ray.ang.dto.RealPingResult
+import com.v2ray.ang.dto.SpeedTestResult
 import com.v2ray.ang.dto.SubscriptionUpdateResult
 import com.v2ray.ang.dto.TestServiceMessage
 import com.v2ray.ang.dto.entities.ProfileItem
@@ -65,6 +66,9 @@ class MainRepository(
                 AppConfig.MSG_MEASURE_CONFIG_SUCCESS -> safeIntent
                     .serializable<RealPingResult>("content")
                     ?.let { MainServiceEvent.MeasureConfigSuccess(it, requestId) }
+                AppConfig.MSG_MEASURE_SPEED_SUCCESS -> safeIntent
+                    .serializable<SpeedTestResult>("content")
+                    ?.let { MainServiceEvent.MeasureSpeedSuccess(it, requestId) }
                 AppConfig.MSG_MEASURE_CONFIG_NOTIFY -> MainServiceEvent.MeasureConfigNotify(
                     safeIntent.getStringExtra("content").orEmpty(), requestId
                 )
@@ -179,6 +183,9 @@ class MainRepository(
 
     override fun clearAllTestDelayResults(guids: List<String>) =
         MmkvManager.clearAllTestDelayResults(guids)
+
+    override fun clearAllTestSpeedResults(guids: List<String>) =
+        MmkvManager.clearAllTestSpeedResults(guids)
 
     override fun sortByTestResultsForSub(subId: String) {
         AngConfigManager.sortByTestResultsForSub(subId)
