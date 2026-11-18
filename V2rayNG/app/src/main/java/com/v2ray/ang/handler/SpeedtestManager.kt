@@ -181,13 +181,17 @@ object SpeedtestManager {
     }
 
     /**
-     * Upload a random payload to [url] and measure the transfer rate.
+     * Upload random data to [url] and measure the rate the server confirms.
      *
-     * The body is streamed until [maxBytes], [maxDurationMs], or [isActive] returns false; the
-     * clock runs from the first body write until the server's response arrives, so data still
-     * buffered locally is not counted as sent.
+     * The upload is a series of fixed-size POST requests. A request counts only when the
+     * server's response arrives, so data still buffered in the local proxy or socket is never
+     * counted as sent, and a slow uplink never has to drain megabytes before a timeout. Each
+     * request is timed from its first body write, which excludes connection setup. The size
+     * starts small and grows while requests finish quickly, keeping per-request latency a
+     * small part of the measured time. No new request starts after [maxDurationMs] or
+     * [maxBytes], or once [isActive] returns false.
      *
-     * @return Bytes per second, or -1 when the request fails or nothing was measured.
+     * @return Bytes per second over the completed requests, or -1 when none completed.
      */
     fun measureUploadSpeed(
         client: OkHttpClient,
@@ -196,29 +200,66 @@ object SpeedtestManager {
         maxDurationMs: Long = AppConfig.SPEED_TEST_MAX_DURATION_MS,
         isActive: () -> Boolean = { true },
     ): Long {
-        val written = AtomicLong(0L)
-        val startNanos = AtomicLong(0L)
-        val maxDurationNanos = TimeUnit.MILLISECONDS.toNanos(maxDurationMs)
         // Random bytes so a compressing middlebox cannot shrink the payload.
-        val payload = Random.nextBytes(TRANSFER_CHUNK_BYTES.toInt())
+        val chunk = Random.nextBytes(TRANSFER_CHUNK_BYTES.toInt())
+        val maxDurationNanos = TimeUnit.MILLISECONDS.toNanos(maxDurationMs)
+        val testStart = System.nanoTime()
+        var requestBytes = UPLOAD_INITIAL_REQUEST_BYTES
+        var confirmedBytes = 0L
+        var confirmedNanos = 0L
+
+        while (isActive() && confirmedBytes < maxBytes && System.nanoTime() - testStart < maxDurationNanos) {
+            val size = minOf(requestBytes, maxBytes - confirmedBytes)
+            val elapsed = try {
+                uploadOnce(client, url, chunk, size, isActive)
+            } catch (e: IOException) {
+                if (isActive()) {
+                    LogUtil.e(AppConfig.TAG, "Speed test upload failed after $confirmedBytes confirmed bytes", e)
+                }
+                -1L
+            } catch (e: IllegalArgumentException) {
+                LogUtil.e(AppConfig.TAG, "Speed test upload failed, invalid request", e)
+                -1L
+            }
+            if (elapsed <= 0L) break
+            confirmedBytes += size
+            confirmedNanos += elapsed
+            requestBytes = nextUploadRequestBytes(requestBytes, elapsed)
+        }
+
+        if (!isActive()) return -1L
+        return bytesPerSecond(confirmedBytes, confirmedNanos)
+    }
+
+    /**
+     * POST [size] bytes and wait for the response.
+     *
+     * @return Nanoseconds from the first body write to the response, or -1 when the server
+     * rejected the request or [isActive] turned false while writing.
+     */
+    private fun uploadOnce(
+        client: OkHttpClient,
+        url: String,
+        chunk: ByteArray,
+        size: Long,
+        isActive: () -> Boolean,
+    ): Long {
+        val firstWriteNanos = AtomicLong(0L)
         val body = object : RequestBody() {
             override fun contentType() = "application/octet-stream".toMediaType()
 
-            // Unknown length: the body ends when a limit is reached.
-            override fun contentLength() = -1L
+            override fun contentLength() = size
 
             override fun isOneShot() = true
 
             override fun writeTo(sink: BufferedSink) {
-                val start = System.nanoTime()
-                startNanos.set(start)
-                while (isActive()) {
-                    val sent = written.get()
-                    if (sent >= maxBytes || System.nanoTime() - start >= maxDurationNanos) break
-                    val count = minOf(payload.size.toLong(), maxBytes - sent).toInt()
-                    sink.write(payload, 0, count)
-                    sink.flush()
-                    written.addAndGet(count.toLong())
+                firstWriteNanos.set(System.nanoTime())
+                var written = 0L
+                while (written < size) {
+                    if (!isActive()) throw IOException("Speed test cancelled")
+                    val count = minOf(chunk.size.toLong(), size - written).toInt()
+                    sink.write(chunk, 0, count)
+                    written += count
                 }
             }
         }
@@ -227,22 +268,28 @@ object SpeedtestManager {
             .post(body)
             .header("Cache-Control", "no-cache")
             .build()
-        try {
-            client.newCall(request).execute().use { response ->
-                val endNanos = System.nanoTime()
-                if (!response.isSuccessful) {
-                    LogUtil.w(AppConfig.TAG, "Speed test upload failed, code=${response.code}")
-                    return -1L
-                }
-                if (!isActive() || startNanos.get() == 0L) return -1L
-                return bytesPerSecond(written.get(), endNanos - startNanos.get())
+        client.newCall(request).execute().use { response ->
+            val endNanos = System.nanoTime()
+            if (!response.isSuccessful) {
+                LogUtil.w(AppConfig.TAG, "Speed test upload failed, code=${response.code}")
+                return -1L
             }
-        } catch (e: IOException) {
-            LogUtil.e(AppConfig.TAG, "Speed test upload failed", e)
-        } catch (e: IllegalArgumentException) {
-            LogUtil.e(AppConfig.TAG, "Speed test upload failed, invalid request", e)
+            val start = firstWriteNanos.get()
+            return if (start == 0L) -1L else (endNanos - start).coerceAtLeast(1L)
         }
-        return -1L
+    }
+
+    /**
+     * Grow the next upload request while requests finish well under the target duration, so
+     * the fixed per-request latency stays a small share of the measurement.
+     */
+    internal fun nextUploadRequestBytes(currentBytes: Long, elapsedNanos: Long): Long {
+        val next = when {
+            elapsedNanos < UPLOAD_TARGET_REQUEST_NANOS / 4 -> currentBytes * 4
+            elapsedNanos < UPLOAD_TARGET_REQUEST_NANOS -> currentBytes * 2
+            else -> currentBytes
+        }
+        return next.coerceAtMost(UPLOAD_MAX_REQUEST_BYTES)
     }
 
     /**
@@ -257,4 +304,7 @@ object SpeedtestManager {
     }
 
     private const val TRANSFER_CHUNK_BYTES = 64L * 1024
+    private const val UPLOAD_INITIAL_REQUEST_BYTES = 256L * 1024
+    private const val UPLOAD_MAX_REQUEST_BYTES = 8L * 1024 * 1024
+    private const val UPLOAD_TARGET_REQUEST_NANOS = 2_000_000_000L
 }

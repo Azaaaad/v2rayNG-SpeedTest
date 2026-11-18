@@ -13,8 +13,8 @@ import java.net.InetAddress
 import java.net.Proxy
 import java.net.ServerSocket
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 
 class SpeedtestManagerThroughputTest {
@@ -85,37 +85,60 @@ class SpeedtestManagerThroughputTest {
     }
 
     @Test
-    fun uploadStreamsUntilByteLimitAndMeasuresRate() {
+    fun uploadCountsOnlyConfirmedRequestsUpToByteLimit() {
         val maxBytes = 1L * 1024 * 1024
-        val received = AtomicLong(-1L)
-        val served = serveOnce { input, output ->
-            readHeaders(input)
-            received.set(readChunkedBody(input))
-            output.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
-            output.flush()
+        val requestSizes = CopyOnWriteArrayList<Long>()
+        serveOnce { input, output ->
+            // OkHttp reuses the connection, so serve requests until the client closes it.
+            while (true) {
+                val headers = readHeaders(input)
+                if (headers.isEmpty()) break
+                val length = contentLength(headers)
+                skipBytes(input, length)
+                requestSizes.add(length)
+                output.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                output.flush()
+            }
             ""
         }
 
         val speed = SpeedtestManager.measureUploadSpeed(client, "$baseUrl/up", maxBytes = maxBytes, maxDurationMs = 10_000)
 
-        served.get(5, TimeUnit.SECONDS)
         assertTrue(speed > 0L, "speed=$speed")
-        assertEquals(maxBytes, received.get())
+        // 256 KiB first, then the rest of the 1 MiB budget once the first request was fast.
+        assertEquals(listOf(256L * 1024, 768L * 1024), requestSizes.toList())
     }
 
     @Test
     fun uploadStopsWhenInactive() {
-        serveOnce { input, output ->
-            readHeaders(input)
-            readChunkedBody(input)
-            output.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray())
-            output.flush()
-            ""
-        }
-
         val speed = SpeedtestManager.measureUploadSpeed(client, "$baseUrl/up", isActive = { false })
 
         assertEquals(-1L, speed)
+    }
+
+    @Test
+    fun uploadRequestGrowsOnlyWhileRequestsAreFast() {
+        val kib = 1024L
+        val second = TimeUnit.SECONDS.toNanos(1)
+        assertEquals(1024 * kib, SpeedtestManager.nextUploadRequestBytes(256 * kib, second / 10))
+        assertEquals(512 * kib, SpeedtestManager.nextUploadRequestBytes(256 * kib, second))
+        assertEquals(256 * kib, SpeedtestManager.nextUploadRequestBytes(256 * kib, 3 * second))
+        assertEquals(8 * 1024 * kib, SpeedtestManager.nextUploadRequestBytes(4 * 1024 * kib, second / 10))
+    }
+
+    private fun contentLength(headers: String): Long =
+        headers.lineSequence()
+            .firstOrNull { it.startsWith("content-length:", ignoreCase = true) }
+            ?.substringAfter(':')?.trim()?.toLong() ?: 0L
+
+    private fun skipBytes(input: InputStream, count: Long) {
+        val buffer = ByteArray(64 * 1024)
+        var remaining = count
+        while (remaining > 0) {
+            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read == -1) return
+            remaining -= read
+        }
     }
 
     /** Serve one connection on a background thread; the future holds what [handler] returned. */
@@ -153,26 +176,5 @@ class SpeedtestManagerThroughputTest {
             headers.append(line).append('\n')
         }
         return headers.toString()
-    }
-
-    /** Read a chunked request body and return its decoded length. */
-    private fun readChunkedBody(input: InputStream): Long {
-        var total = 0L
-        val buffer = ByteArray(64 * 1024)
-        while (true) {
-            val size = readLine(input).substringBefore(';').trim().toLong(16)
-            if (size == 0L) {
-                readLine(input)
-                return total
-            }
-            var remaining = size
-            while (remaining > 0) {
-                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
-                if (read == -1) return total
-                remaining -= read
-            }
-            total += size
-            readLine(input)
-        }
     }
 }
